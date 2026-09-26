@@ -96,9 +96,14 @@ def daemon(args):
     last_reader_at = 0.0
     next_spawn_at = 0.0
     last_write = 0.0
+    # latest real frame; repeated while the worker is slower than the fill rate,
+    # so the placeholder never flickers into a running stream
+    last_frame = None
+    spawned_at = 0.0
 
     def stop_worker():
-        nonlocal worker, buf
+        nonlocal worker, buf, last_frame
+        last_frame = None
         if worker is None:
             return
         log("daemon: stopping worker")
@@ -130,6 +135,7 @@ def daemon(args):
             log("daemon: reader active, starting worker")
             worker = subprocess.Popen(worker_cmd, stdout=subprocess.PIPE, bufsize=0)
             os.set_blocking(worker.stdout.fileno(), False)
+            spawned_at = now
         elif not want and worker is not None:
             stop_worker()
 
@@ -137,13 +143,14 @@ def daemon(args):
             log(f"daemon: worker exited with {worker.returncode}, retrying in 5s")
             worker = None
             buf = bytearray()
+            last_frame = None
             next_spawn_at = now + 5
 
         p = select.poll()
         p.register(fd, select.POLLPRI)
         if worker is not None:
             p.register(worker.stdout.fileno(), select.POLLIN)
-        # while someone watches but no real frames flow, keep placeholder at ~10fps
+        # while someone watches, keep frames flowing at >= ~10fps
         timeout = 100 if readers > 0 else 1000
         for rfd, ev in p.poll(timeout):
             if rfd == fd:
@@ -161,11 +168,14 @@ def daemon(args):
                     n = len(buf) // frame_size
                     frame = bytes(buf[(n - 1) * frame_size:n * frame_size])
                     del buf[:n * frame_size]
+                    if last_frame is None:
+                        log(f"daemon: first frame after {time.monotonic() - spawned_at:.1f}s")
+                    last_frame = frame
                     write_frame(fd, frame)
                     last_write = time.monotonic()
 
         if time.monotonic() - last_write > (0.1 if readers > 0 else 1.0):
-            write_frame(fd, idle)
+            write_frame(fd, last_frame or idle)
             last_write = time.monotonic()
 
 
@@ -220,7 +230,6 @@ def worker(args):
     import torch.nn.functional as F
 
     dev = torch.device("cuda")
-    torch.backends.cudnn.benchmark = True
     model_path = resolve_model(args.model)
     model = torch.jit.load(model_path, map_location=dev).eval()
     dtype = torch.float16 if "fp16" in os.path.basename(model_path) else torch.float32
