@@ -59,6 +59,7 @@ stdenvNoCC.mkDerivation {
 
   meta = {
     description = "On-demand background-removal virtual webcam (Robust Video Matting + v4l2loopback)";
+    license = lib.licenses.mit;
     platforms = [ "x86_64-linux" ];
     mainProgram = "rvm-cam";
   };

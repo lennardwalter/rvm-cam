@@ -96,5 +96,6 @@ sudo insmod $(nix build --no-link --print-out-paths nixpkgs#linuxPackages_latest
 
 ## License
 
-The RVM model weights are GPL-3.0 (downloaded at build time from the upstream
-release). No license has been chosen for this repository's own code yet.
+MIT, see [LICENSE](LICENSE). The RVM model weights are not part of this
+repository; they are GPL-3.0 and downloaded at build time from the
+[upstream release](https://github.com/PeterL1n/RobustVideoMatting).
